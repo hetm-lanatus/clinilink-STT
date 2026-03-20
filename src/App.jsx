@@ -125,7 +125,6 @@ function applyCustomDictionary(text) {
       const { hit, score } = fuzzyMatch(phrase, DRUG_LIST, len > 1 ? 0.6 : 0.55);
 
       if (hit) {
-        // 🚨 NEW LOGIC: don't swallow medical keywords
         if (len > 1) {
           const extraWords = slice.slice(1).map((w) => w.toLowerCase());
           const hasProtectedWord = extraWords.some((w) =>
@@ -175,39 +174,45 @@ function applyCustomDictionary(text) {
   return out.join(" ");
 }
 
-// ─── Eye parser — STRICT clinical phrases only ───────────────────────────────
-// Requires "right/left/both" to be immediately followed by "eye(s)",
-// or the standalone Latin abbreviations OD / OS / OU as whole words.
-// A bare "left" or "right" without "eye" will NOT match.
+// ─── Eye parser ───────────────────────────────────────────────────────────────
 function parseEye(segment) {
   const text = segment.toLowerCase();
-
-  // Both eyes
   if (/\bboth\s*(eye[s]?|i)?\b/.test(text)) return "Both eyes";
-
-  // Right eye
   if (/\bright\s*(eye[s]?|i)?\b/.test(text)) return "Right eye";
-
-  // Left eye
   if (/\bleft\s*(eye[s]?|i)?\b/.test(text)) return "Left eye";
-
   return "";
 }
 
 // ─── Main transcript parser ───────────────────────────────────────────────────
 function parseTranscript(text) {
   const lower = text.toLowerCase();
+
+  // Find all drug mentions with their positions
   const mentions = [];
   DRUG_LIST.forEach((drug) => {
     const idx = lower.indexOf(drug.toLowerCase());
-    if (idx !== -1) mentions.push({ drug, idx });
+    if (idx !== -1) mentions.push({ drug, idx, len: drug.length });
   });
-  mentions.sort((a, b) => a.idx - b.idx);
-  if (!mentions.length) return [];
 
-  return mentions.slice(0, 3).map((m, d) => {
+  // KEY FIX: Remove any mention that is fully contained within / overlapped by
+  // a longer drug match starting at the same or nearby position.
+  // e.g. "Alphagan" at idx 0 is shadowed by "Alphagan P" at idx 0.
+  const deduped = mentions.filter((m) => {
+    return !mentions.some(
+      (other) =>
+        other !== m &&
+        other.len > m.len &&                       // other is longer
+        other.idx <= m.idx &&                      // other starts at or before m
+        other.idx + other.len >= m.idx + m.len     // other fully covers m
+    );
+  });
+
+  deduped.sort((a, b) => a.idx - b.idx);
+  if (!deduped.length) return [];
+
+  return deduped.slice(0, 3).map((m, d) => {
     const start = m.idx;
-    const end = d < mentions.length - 1 ? mentions[d + 1].idx : text.length;
+    const end = d < deduped.length - 1 ? deduped[d + 1].idx : text.length;
     const segment = text.slice(start, end).toLowerCase();
 
     const eye = parseEye(segment);
