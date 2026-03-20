@@ -92,7 +92,7 @@ function fuzzyMatch(word, candidates, threshold = 0.55) {
       best = c;
     }
   }
-  return bestScore >= threshold ? best : null;
+  return { hit: bestScore >= threshold ? best : null, score: bestScore >= threshold ? bestScore : 0 };
 }
 
 function applyCustomDictionary(text) {
@@ -112,36 +112,62 @@ function applyCustomDictionary(text) {
     "mane",
     "nocte",
   ];
-  while (i < tokens.length) {
-    let matched = false;
 
-    for (let len = Math.min(3, tokens.length - i); len >= 1; len--) {
-      const slice = tokens.slice(i, i + len);
+  const getBestMatch = (startIdx) => {
+    let bestMatch = null;
+    let bestLen = 0;
+    let maxScore = -1;
+
+    for (let len = 1; len <= Math.min(4, tokens.length - startIdx); len++) {
+      const slice = tokens.slice(startIdx, startIdx + len);
       const phrase = slice.join(" ");
 
-      const hit = fuzzyMatch(phrase, DRUG_LIST, len > 1 ? 0.6 : 0.55);
+      const { hit, score } = fuzzyMatch(phrase, DRUG_LIST, len > 1 ? 0.6 : 0.55);
 
       if (hit) {
         // 🚨 NEW LOGIC: don't swallow medical keywords
         if (len > 1) {
           const extraWords = slice.slice(1).map((w) => w.toLowerCase());
-
           const hasProtectedWord = extraWords.some((w) =>
             PROTECTED.includes(w),
           );
-
-          if (hasProtectedWord) {
-            continue; // ⛔ skip this match
-          }
+          if (hasProtectedWord) continue;
         }
 
-        out.push(hit);
-        i += len;
-        matched = true;
-        break;
+        if (score > maxScore || (score === maxScore && len < bestLen)) {
+          maxScore = score;
+          bestMatch = hit;
+          bestLen = len;
+        }
       }
     }
-    if (!matched) {
+    return { hit: bestMatch, len: bestLen, score: maxScore };
+  };
+
+  while (i < tokens.length) {
+    const current = getBestMatch(i);
+
+    if (current.hit) {
+      let skipCurrent = false;
+      if (i + 1 < tokens.length) {
+        const next = getBestMatch(i + 1);
+        if (
+          next.hit &&
+          (next.score > current.score ||
+            (next.score === current.score && next.len < current.len))
+        ) {
+          skipCurrent = true;
+        }
+      }
+
+      if (skipCurrent) {
+        out.push(tokens[i]);
+        i++;
+      } else {
+        out.push(current.hit);
+        i += current.len;
+      }
+    } else {
       out.push(tokens[i]);
       i++;
     }
