@@ -92,7 +92,10 @@ function fuzzyMatch(word, candidates, threshold = 0.55) {
       best = c;
     }
   }
-  return { hit: bestScore >= threshold ? best : null, score: bestScore >= threshold ? bestScore : 0 };
+  return {
+    hit: bestScore >= threshold ? best : null,
+    score: bestScore >= threshold ? bestScore : 0,
+  };
 }
 
 function applyCustomDictionary(text) {
@@ -122,7 +125,11 @@ function applyCustomDictionary(text) {
       const slice = tokens.slice(startIdx, startIdx + len);
       const phrase = slice.join(" ");
 
-      const { hit, score } = fuzzyMatch(phrase, DRUG_LIST, len > 1 ? 0.6 : 0.55);
+      const { hit, score } = fuzzyMatch(
+        phrase,
+        DRUG_LIST,
+        len > 1 ? 0.6 : 0.55,
+      );
 
       if (hit) {
         if (len > 1) {
@@ -201,9 +208,9 @@ function parseTranscript(text) {
     return !mentions.some(
       (other) =>
         other !== m &&
-        other.len > m.len &&                       // other is longer
-        other.idx <= m.idx &&                      // other starts at or before m
-        other.idx + other.len >= m.idx + m.len     // other fully covers m
+        other.len > m.len && // other is longer
+        other.idx <= m.idx && // other starts at or before m
+        other.idx + other.len >= m.idx + m.len, // other fully covers m
     );
   });
 
@@ -552,6 +559,7 @@ export default function App() {
   }, []);
 
   const startListening = () => {
+    setTranscript("");
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const r = new SR();
     r.continuous = true;
